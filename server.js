@@ -11,7 +11,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 // --- NUEVO: Seguridad del chat ---
-const CLAVE_SECRETA = "gatito-espacial-42"; // Cambia esto por la contraseña que quieras
+const CLAVE_SECRETA = "Kaworu"; // Cambia esto por la contraseña que quieras
 
 // Middleware de Socket.io para verificar la clave ANTES de conectar
 io.use((socket, next) => {
