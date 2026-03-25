@@ -2,27 +2,33 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Retro Messenger</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script src="/socket.io/socket.io.js"></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/icono.png">
     <style>
-        /* --- ESTILO RETRO 2000s (Frutiger Aero) --- */
+       
         body { 
             font-family: 'Tahoma', Arial, sans-serif; 
             margin: 0; 
             padding: 0;
-            background: linear-gradient(135deg, #d4e4f7 0%, #b3d0f5 100%); /* Fondo azul claro tipo MSN */
-            height: 100vh;
+          
+            padding-top: env(safe-area-inset-top);
+            background: linear-gradient(135deg, #d4e4f7 0%, #b3d0f5 100%); 
+          
+            height: 100dvh; 
             display: flex;
             justify-content: center;
             align-items: center;
+            box-sizing: border-box;
         }
 
-        /* Contenedor principal que simula una ventana de PC */
         .ventana {
             width: 100%;
             max-width: 450px;
-            height: 100vh;
+            height: 100dvh; /* Cambiado a dvh */
             background: white;
             display: flex;
             flex-direction: column;
@@ -30,7 +36,7 @@
             border: 1px solid #99c2ea;
         }
 
-        /* En PC lo hacemos parecer una ventanita, en móvil ocupa toda la pantalla */
+      
         @media (min-width: 480px) {
             .ventana {
                 height: 85vh;
@@ -39,7 +45,7 @@
             }
         }
 
-        /* Cabecera brillante estilo Windows Vista */
+      
         .cabecera {
             background: linear-gradient(to bottom, #f2fcff 0%, #c1e0f7 50%, #a6d3f2 51%, #cae8fa 100%);
             padding: 15px;
@@ -51,7 +57,7 @@
         
         .cabecera h2 { margin: 0; font-size: 1.2rem; }
 
-        /* --- PANTALLA DE LOGIN --- */
+      
         #pantalla-login {
 
             display: flex;
@@ -69,7 +75,7 @@
             box-sizing: border-box;
         }
 
-        /* --- PANTALLA DE CHAT (Oculta al inicio) --- */
+      
         #pantalla-chat {
             display: none; /* Se activará con JS */
             flex-direction: column;
@@ -88,6 +94,8 @@
         #zona-escritura {
             display: flex;
             padding: 10px;
+            /* Añadimos padding extra abajo para la barrita negra del iPhone */
+            padding-bottom: calc(10px + env(safe-area-inset-bottom));
             background: linear-gradient(to bottom, #eef5fc, #dceaf7);
             border-top: 1px solid #b3d0f5;
         }
@@ -221,13 +229,12 @@
         // --- 2. VARIABLES GLOBALES Y SONIDOS ---
         let socket;
         let miAlias = "";
-        let chatIniciado = false; // Nuestro candado maestro
+        let chatIniciado = false; 
+        let mensajesSinLeer = []; // <-- NUEVO: Aquí guardaremos los que llegan mientras no miras
 
-        // Asegúrate de tener mensaje.mp3 y zumbido.mp3 en tu carpeta 'public'
         const audioMensaje = new Audio('/mensaje.mp3');
         const audioZumbido = new Audio('/zumbido.mp3');
-
-        // --- 3. LÓGICA DE LOGIN ---
+// --- 3. LÓGICA DE LOGIN ---
         btnEntrar.addEventListener('click', () => {
             const usuario = inputUsuario.value.trim();
             const clave = inputClave.value.trim();
@@ -238,30 +245,30 @@
                 return;
             }
 
+            // --- PEDIR NOTIFICACIONES (VERSIÓN LIMPIA) ---
+            // Esto solo funcionará si la página tiene HTTPS (candadito)
+            if ("Notification" in window && Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+
             miAlias = usuario;
             errorLogin.style.display = "none";
-            
-            // Bloqueamos el botón para evitar doble clic accidental
             btnEntrar.innerText = "Conectando...";
             btnEntrar.disabled = true; 
 
-            socket = io({
-                auth: { token: clave, alias: miAlias }
-            });
+            socket = io({ auth: { token: clave, alias: miAlias } });
 
             socket.on("connect_error", (err) => {
                 errorLogin.innerText = "⛔ " + err.message;
                 errorLogin.style.display = "block";
                 btnEntrar.innerText = "Iniciar Sesión";
-                btnEntrar.disabled = false; // Lo desbloqueamos si falla
+                btnEntrar.disabled = false; 
                 socket.disconnect();
             });
 
             socket.on("connect", () => {
                 pantallaLogin.style.display = "none";
                 pantallaChat.style.display = "flex";
-                
-                // Aplicamos el candado de forma estricta
                 if (!chatIniciado) {
                     iniciarChat();
                     chatIniciado = true;
@@ -271,18 +278,35 @@
 
         // --- 4. LÓGICA DEL CHAT Y EVENTOS ---
         function iniciarChat() {
-            // Pintar mensajes
-            function agregarMensajeAlChat(texto, emisor) {
+            
+            function agregarMensajeAlChat(texto, emisor, timestamp, idMensaje, estaLeido) {
                 const divContenedor = document.createElement('div');
                 const esMio = (emisor === miAlias);
                 divContenedor.className = `mensaje ${esMio ? 'mio' : 'otro'}`;
-                const nombreHTML = esMio ? "" : `<strong style="font-size: 0.75rem; color: #1a5c99; display: block; margin-bottom: 3px;">${emisor}</strong>`;
-                divContenedor.innerHTML = `${nombreHTML}${texto}`;
+                
+                const fecha = timestamp ? new Date(timestamp) : new Date();
+                const horas = fecha.getHours().toString().padStart(2, '0');
+                const minutos = fecha.getMinutes().toString().padStart(2, '0');
+                const horaStr = `${horas}:${minutos}`; 
+
+                const nombreHTML = esMio ? "" : `<strong style="font-size: 0.75rem; color: #1a5c99; display: block; margin-bottom: 2px;">${emisor}</strong>`;
+                
+                let vistoHTML = "";
+                if (esMio) {
+                    const colorVisto = estaLeido ? '#34B7F1' : '#999'; 
+                    const checks = estaLeido ? '✓✓' : '✓';
+                    vistoHTML = `<span id="check-${idMensaje}" style="color: ${colorVisto}; margin-left: 4px; font-weight: bold; font-size: 0.7rem;">${checks}</span>`;
+                }
+
+                const colorHora = esMio ? '#577899' : '#999';
+                const horaHTML = `<span style="font-size: 0.65rem; color: ${colorHora}; float: right; margin-left: 12px; margin-top: 6px;">${horaStr} ${vistoHTML}</span>`;
+
+                divContenedor.innerHTML = `${nombreHTML}<span style="word-wrap: break-word;">${texto}</span>${horaHTML}<div style="clear: both;"></div>`;
+                
                 chatBox.appendChild(divContenedor);
                 chatBox.scrollTop = chatBox.scrollHeight;
             }
 
-            // Pintar avisos del sistema (conexiones, zumbidos)
             function agregarMensajeSistema(texto) {
                 const divContenedor = document.createElement('div');
                 divContenedor.className = 'mensaje-sistema';
@@ -291,32 +315,33 @@
                 chatBox.scrollTop = chatBox.scrollHeight;
             }
 
-            // Temblor de pantalla controlado
             function ejecutarZumbido() {
-                audioZumbido.currentTime = 0; // Reinicia el sonido por si sigue sonando
-                audioZumbido.play().catch(e => console.log("Audio bloqueado:", e));
-                
+                audioZumbido.currentTime = 0; 
+                audioZumbido.play().catch(e => console.log(e));
                 ventanaApp.classList.add('temblando');
-                
-                // Quitamos la clase EXACTAMENTE a los 500ms
-                setTimeout(() => {
-                    ventanaApp.classList.remove('temblando');
-                }, 500);
+                setTimeout(() => ventanaApp.classList.remove('temblando'), 500);
             }
 
-            // Enviar mensajes de texto
-            function enviarMensaje() {
+            function enviarMensaje(evento) {
+                if (evento) evento.preventDefault(); 
                 const textoFinal = inputMensaje.value.trim();
+                
                 if (textoFinal !== '') {
-                    socket.emit('mensaje_final', { texto: textoFinal, emisor: miAlias });
-                    agregarMensajeAlChat(textoFinal, miAlias);
+                    const tiempoActual = Date.now();
+                    const idUnico = tiempoActual.toString(); 
+
+                    socket.emit('mensaje_final', { id: idUnico, texto: textoFinal, emisor: miAlias, timestamp: tiempoActual, leido: false });
+                    agregarMensajeAlChat(textoFinal, miAlias, tiempoActual, idUnico, false);
+                    
                     inputMensaje.value = '';
                     socket.emit('escribiendo', { emisor: miAlias, texto: '' });
+                    inputMensaje.focus(); 
                 }
             }
 
-            // --- LISTENERS LOCALES (Botones) ---
-            btnEnviar.addEventListener('click', enviarMensaje);
+            // --- LISTENERS LOCALES ---
+            btnEnviar.addEventListener('mousedown', enviarMensaje); 
+            btnEnviar.addEventListener('touchstart', enviarMensaje); 
             
             inputMensaje.addEventListener('keydown', (evento) => {
                 if (evento.key === 'Enter') enviarMensaje();
@@ -332,7 +357,18 @@
                 ejecutarZumbido();
             });
 
-            // --- LISTENERS DEL SERVIDOR (Sockets) ---
+            // --- NUEVO: ¿EL USUARIO ESTÁ MIRANDO LA PANTALLA? ---
+            document.addEventListener('visibilitychange', () => {
+                // Si la pestaña vuelve a estar visible y tenemos mensajes pendientes de leer
+                if (document.visibilityState === 'visible' && mensajesSinLeer.length > 0) {
+                    mensajesSinLeer.forEach(id => {
+                        socket.emit('mensaje_leido', id); // Enviamos los vistos acumulados
+                    });
+                    mensajesSinLeer = []; // Vaciamos la lista
+                }
+            });
+
+            // --- LISTENERS DEL SERVIDOR ---
             socket.on('escribiendo', (datos) => {
                 if (datos && datos.texto.length > 0) {
                     burbujaEnVivo.innerText = `${datos.emisor} teclea: ${datos.texto}`;
@@ -342,16 +378,38 @@
             });
 
             socket.on('mensaje_final', (datosMensaje) => {
-                agregarMensajeAlChat(datosMensaje.texto, datosMensaje.emisor);
+                agregarMensajeAlChat(datosMensaje.texto, datosMensaje.emisor, datosMensaje.timestamp, datosMensaje.id, datosMensaje.leido);
                 burbujaEnVivo.innerText = "";
                 audioMensaje.currentTime = 0; 
                 audioMensaje.play().catch(e => console.log(e));
+
+                if (document.visibilityState === 'visible') {
+                    socket.emit('mensaje_leido', datosMensaje.id);
+                } else {
+                    mensajesSinLeer.push(datosMensaje.id);
+                    
+                    // NUEVO: Lanzar notificación nativa del teléfono/PC si estamos en otra app
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification(`Mensaje de ${datosMensaje.emisor}`, { 
+                            body: datosMensaje.texto,
+                            icon: '/icono.png'
+                        });
+                    }
+                }
+            });
+
+            socket.on('mensaje_leido', (idMensaje) => {
+                const checkSpan = document.getElementById(`check-${idMensaje}`);
+                if (checkSpan) {
+                    checkSpan.innerText = "✓✓";
+                    checkSpan.style.color = "#34B7F1"; 
+                }
             });
 
             socket.on('cargar_historial', (historial) => {
                 chatBox.innerHTML = ''; 
                 historial.forEach(mensaje => {
-                    agregarMensajeAlChat(mensaje.texto, mensaje.emisor); 
+                    agregarMensajeAlChat(mensaje.texto, mensaje.emisor, mensaje.timestamp, mensaje.id, mensaje.leido); 
                 });
             });
 
