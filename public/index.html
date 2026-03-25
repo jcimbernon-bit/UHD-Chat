@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Privado</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
+        #chat-box { border: 1px solid #ccc; height: 300px; padding: 10px; margin-bottom: 10px; overflow-y: auto; }
+        #burbuja-en-vivo { color: #888; font-style: italic; min-height: 20px; margin-bottom: 10px; }
+        input { width: 100%; padding: 10px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <h2>Chat Secreto 🕵️‍♂️</h2>
+    <div id="chat-box"></div>
+    <div id="burbuja-en-vivo"></div>
+    <input type="text" id="input-mensaje" placeholder="Escribe algo..." autocomplete="off">
+
+    <script>
+        // 1. Seguridad: Extraemos la clave de la URL
+        const parametrosURL = new URLSearchParams(window.location.search);
+        const miClave = parametrosURL.get('key');
+
+        const socket = io({
+            auth: { token: miClave }
+        });
+
+        socket.on("connect_error", (err) => {
+            document.body.innerHTML = `<h2 style="color:red; text-align:center;">⛔ ${err.message}</h2>`;
+        });
+
+        // 2. Variables de la interfaz
+        const inputMensaje = document.getElementById('input-mensaje');
+        const burbujaEnVivo = document.getElementById('burbuja-en-vivo');
+        const chatBox = document.getElementById('chat-box');
+
+        // Función central para crear el "div" de cada mensaje (¡aquí estaba el error!)
+        function agregarMensajeAlChat(texto, esMio) {
+            const div = document.createElement('div');
+            div.style.padding = "5px";
+            div.style.marginBottom = "5px";
+            div.style.borderRadius = "5px";
+            div.style.textAlign = esMio ? "right" : "left";
+            div.style.backgroundColor = esMio ? "#d1e7dd" : "#f8d7da";
+            
+            div.innerText = texto;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // 3. Escribir en vivo
+        inputMensaje.addEventListener('input', () => {
+            socket.emit('escribiendo', inputMensaje.value);
+        });
+
+        socket.on('escribiendo', (texto) => {
+            burbujaEnVivo.innerText = texto.length > 0 ? "La otra persona teclea: " + texto : "";
+        });
+
+        // 4. Enviar mensaje final con Enter
+        inputMensaje.addEventListener('keydown', (evento) => {
+            if (evento.key === 'Enter' && inputMensaje.value.trim() !== '') {
+                const textoFinal = inputMensaje.value;
+                socket.emit('mensaje_final', { texto: textoFinal });
+                agregarMensajeAlChat(textoFinal, true);
+                inputMensaje.value = '';
+                socket.emit('escribiendo', '');
+            }
+        });
+
+        socket.on('mensaje_final', (datosMensaje) => {
+            agregarMensajeAlChat(datosMensaje.texto, false);
+            burbujaEnVivo.innerText = ""; 
+        });
+
+        // 5. Cargar y actualizar historial
+        socket.on('cargar_historial', (historial) => {
+            chatBox.innerHTML = ''; 
+            historial.forEach(mensaje => {
+                agregarMensajeAlChat(mensaje.texto, false); 
+            });
+        });
+
+        socket.on('actualizar_historial', (historial) => {
+            chatBox.innerHTML = ''; 
+            historial.forEach(mensaje => {
+                agregarMensajeAlChat(mensaje.texto, false); 
+            });
+        });
+    </script>
+</body>
+</html>
