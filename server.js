@@ -14,15 +14,22 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 const CLAVE_SECRETA = "Kaworu"; // Cambia esto por la contraseña que quieras
 
 // Middleware de Socket.io para verificar la clave ANTES de conectar
+// Middleware de Socket.io para verificar la clave y el cupo
 io.use((socket, next) => {
-    // Recibimos la clave que nos manda el frontend
     const tokenCliente = socket.handshake.auth.token;
     
-    if (tokenCliente === CLAVE_SECRETA) {
-        next(); // Pasa el control: el usuario entra
-    } else {
-        next(new Error("Acceso denegado: Clave incorrecta")); // Le cerramos la puerta
+    // 1. Verificamos la contraseña
+    if (tokenCliente !== CLAVE_SECRETA) {
+        return next(new Error("Acceso denegado: Clave incorrecta")); 
     }
+
+    // 2. NUEVO: Verificamos cuántas personas hay conectadas
+    // io.engine.clientsCount nos dice cuántos sockets activos hay
+    if (io.engine.clientsCount >= 4) {
+        return next(new Error("La sala privada está llena (Máx. 2 personas)"));
+    }
+
+    next(); // Si la clave es correcta y hay espacio, entra.
 });
 
 // --- NUEVO: Aquí guardaremos los mensajes temporalmente ---
@@ -38,13 +45,23 @@ io.on('connection', (socket) => {
     // Le enviamos el historial acumulado
     socket.emit('cargar_historial', historialMensajes);
 
-    // Recibir un mensaje definitivo
+// Recibir un mensaje definitivo
     socket.on('mensaje_final', (datosMensaje) => {
-        datosMensaje.timestamp = Date.now();
+        // Guardamos el mensaje en el historial (viene con su ID y leido: false desde el cliente)
         historialMensajes.push(datosMensaje);
+        // Se lo enviamos al OTRO usuario
         socket.broadcast.emit('mensaje_final', datosMensaje);
     });
 
+    // --- NUEVO: Alguien leyó un mensaje ---
+    socket.on('mensaje_leido', (idMensaje) => {
+        // Buscamos el mensaje en el historial y lo actualizamos para que se guarde como leído
+        const mensaje = historialMensajes.find(m => m.id === idMensaje);
+        if (mensaje) mensaje.leido = true;
+        
+        // Le avisamos a la otra persona que su mensaje fue leído
+        socket.broadcast.emit('mensaje_leido', idMensaje);
+    });
     // Escritura en vivo (lo dejamos igual)
     socket.on('escribiendo', (datos) => {
         socket.broadcast.emit('escribiendo', datos);
