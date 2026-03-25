@@ -2,94 +2,368 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Privado</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Retro Messenger</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; }
-        #chat-box { border: 1px solid #ccc; height: 300px; padding: 10px; margin-bottom: 10px; overflow-y: auto; }
-        #burbuja-en-vivo { color: #888; font-style: italic; min-height: 20px; margin-bottom: 10px; }
-        input { width: 100%; padding: 10px; box-sizing: border-box; }
+        /* --- ESTILO RETRO 2000s (Frutiger Aero) --- */
+        body { 
+            font-family: 'Tahoma', Arial, sans-serif; 
+            margin: 0; 
+            padding: 0;
+            background: linear-gradient(135deg, #d4e4f7 0%, #b3d0f5 100%); /* Fondo azul claro tipo MSN */
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Contenedor principal que simula una ventana de PC */
+        .ventana {
+            width: 100%;
+            max-width: 450px;
+            height: 100vh;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border: 1px solid #99c2ea;
+        }
+
+        /* En PC lo hacemos parecer una ventanita, en móvil ocupa toda la pantalla */
+        @media (min-width: 480px) {
+            .ventana {
+                height: 85vh;
+                border-radius: 12px;
+                overflow: hidden;
+            }
+        }
+
+        /* Cabecera brillante estilo Windows Vista */
+        .cabecera {
+            background: linear-gradient(to bottom, #f2fcff 0%, #c1e0f7 50%, #a6d3f2 51%, #cae8fa 100%);
+            padding: 15px;
+            text-align: center;
+            border-bottom: 2px solid #84b7e8;
+            color: #1a5c99;
+            text-shadow: 1px 1px white;
+        }
+        
+        .cabecera h2 { margin: 0; font-size: 1.2rem; }
+
+        /* --- PANTALLA DE LOGIN --- */
+        #pantalla-login {
+
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            flex-grow: 1;
+        }
+        #pantalla-login input {
+            width: 80%; /* Para que no ocupe todo el ancho */
+            max-width: 300px;
+            flex-grow: 0;
+            box-sizing: border-box;
+        }
+
+        /* --- PANTALLA DE CHAT (Oculta al inicio) --- */
+        #pantalla-chat {
+            display: none; /* Se activará con JS */
+            flex-direction: column;
+            flex-grow: 1;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #chat-box { 
+            flex-grow: 1; 
+            padding: 15px; 
+            overflow-y: auto; 
+            background: #f8fbff;
+        }
+
+        #zona-escritura {
+            display: flex;
+            padding: 10px;
+            background: linear-gradient(to bottom, #eef5fc, #dceaf7);
+            border-top: 1px solid #b3d0f5;
+        }
+
+        /* Inputs y Botones con estilo 2000s */
+        input { 
+            flex-grow: 1; 
+            padding: 12px; 
+            border: 1px solid #99c2ea; 
+            border-radius: 20px; 
+            outline: none;
+            font-family: inherit;
+        }
+
+        button {
+            background: linear-gradient(to bottom, #91c84e 0%, #73a839 100%);
+            color: white;
+            border: 1px solid #5a8728;
+            border-radius: 20px;
+            padding: 10px 20px;
+            margin-left: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.5), 0 2px 4px rgba(0,0,0,0.2);
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.3);
+        }
+
+        button:active { background: #73a839; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); }
+
+        #burbuja-en-vivo { 
+            font-size: 0.8rem; 
+            color: #666; 
+            padding: 0 15px; 
+            min-height: 15px; 
+            background: #f8fbff;
+        }
+
+        /* Estilo de los mensajes */
+        .mensaje {
+            padding: 8px 12px;
+            border-radius: 15px;
+            margin-bottom: 10px;
+            max-width: 80%;
+            word-wrap: break-word;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .mensaje.mio {
+            background: linear-gradient(to bottom, #e3f2fd, #bbdefb);
+            align-self: flex-end;
+            margin-left: auto;
+            border-bottom-right-radius: 2px;
+            border: 1px solid #90caf9;
+        }
+
+        .mensaje.otro {
+            background: linear-gradient(to bottom, #ffffff, #f5f5f5);
+            align-self: flex-start;
+            margin-right: auto;
+            border-bottom-left-radius: 2px;
+            border: 1px solid #e0e0e0;
+        }
+
+        /* Animación del zumbido */
+        @keyframes temblor {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            20% { transform: translate(-10px, 5px) rotate(-1deg); }
+            40% { transform: translate(10px, -5px) rotate(1deg); }
+            60% { transform: translate(-10px, -5px) rotate(-1deg); }
+            80% { transform: translate(10px, 5px) rotate(1deg); }
+            100% { transform: translate(0, 0) rotate(0deg); }
+        }
+
+        .temblando {
+            animation: temblor 0.1s infinite;
+        }
+
+        .mensaje-sistema {
+            text-align: center;
+            color: #888;
+            font-size: 0.85rem;
+            font-style: italic;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
 
-    <h2>Chat Secreto 🕵️‍♂️</h2>
-    <div id="chat-box"></div>
-    <div id="burbuja-en-vivo"></div>
-    <input type="text" id="input-mensaje" placeholder="Escribe algo..." autocomplete="off">
+    <div class="ventana">
+        <div class="cabecera">
+            <h2>UHD-Chat</h2>
+        </div>
 
-    <script>
-        // 1. Seguridad: Extraemos la clave de la URL
-        const parametrosURL = new URLSearchParams(window.location.search);
-        const miClave = parametrosURL.get('key');
+        <div id="pantalla-login">
+            <p style="color: #666; text-align: center;">Inicia sesión para continuar</p>
+            <input type="text" id="input-usuario" placeholder="Tu nombre o alias..." autocomplete="off">
+            <input type="password" id="input-clave" placeholder="Contraseña secreta..." autocomplete="off">
+            <button id="btn-entrar" style="width: 100%; margin-left: 0;">Iniciar Sesión</button>
+            <div id="error-login" style="color: red; font-size: 0.9rem; display: none;">Contraseña incorrecta</div>
+        </div>
 
-        const socket = io({
-            auth: { token: miClave }
-        });
+        <div id="pantalla-chat">
+            <div id="chat-box"></div>
+            <div id="burbuja-en-vivo"></div>
+            
+            <div id="zona-escritura">
+                <button id="btn-zumbido" style="margin-left: 0; margin-right: 10px; background: linear-gradient(to bottom, #f0ca4d, #e5a917); border-color: #c98c0b;" title="Enviar un zumbido">📳</button>
+                
+                <input type="text" id="input-mensaje" placeholder="Escribe un mensaje..." autocomplete="off">
+                <button id="btn-enviar">Enviar</button>
+            </div>
+        </div>
+    </div>
 
-        socket.on("connect_error", (err) => {
-            document.body.innerHTML = `<h2 style="color:red; text-align:center;">⛔ ${err.message}</h2>`;
-        });
+<script>
+        // --- 1. REFERENCIAS AL HTML ---
+        const pantallaLogin = document.getElementById('pantalla-login');
+        const pantallaChat = document.getElementById('pantalla-chat');
+        const inputUsuario = document.getElementById('input-usuario');
+        const inputClave = document.getElementById('input-clave');
+        const btnEntrar = document.getElementById('btn-entrar');
+        const errorLogin = document.getElementById('error-login');
 
-        // 2. Variables de la interfaz
         const inputMensaje = document.getElementById('input-mensaje');
+        const btnEnviar = document.getElementById('btn-enviar');
+        const btnZumbido = document.getElementById('btn-zumbido'); 
         const burbujaEnVivo = document.getElementById('burbuja-en-vivo');
         const chatBox = document.getElementById('chat-box');
+        const ventanaApp = document.querySelector('.ventana');
 
-        // Función central para crear el "div" de cada mensaje (¡aquí estaba el error!)
-        function agregarMensajeAlChat(texto, esMio) {
-            const div = document.createElement('div');
-            div.style.padding = "5px";
-            div.style.marginBottom = "5px";
-            div.style.borderRadius = "5px";
-            div.style.textAlign = esMio ? "right" : "left";
-            div.style.backgroundColor = esMio ? "#d1e7dd" : "#f8d7da";
-            
-            div.innerText = texto;
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
+        // --- 2. VARIABLES GLOBALES Y SONIDOS ---
+        let socket;
+        let miAlias = "";
+        let chatIniciado = false; // Nuestro candado maestro
 
-        // 3. Escribir en vivo
-        inputMensaje.addEventListener('input', () => {
-            socket.emit('escribiendo', inputMensaje.value);
-        });
+        // Asegúrate de tener mensaje.mp3 y zumbido.mp3 en tu carpeta 'public'
+        const audioMensaje = new Audio('/mensaje.mp3');
+        const audioZumbido = new Audio('/zumbido.mp3');
 
-        socket.on('escribiendo', (texto) => {
-            burbujaEnVivo.innerText = texto.length > 0 ? "La otra persona teclea: " + texto : "";
-        });
+        // --- 3. LÓGICA DE LOGIN ---
+        btnEntrar.addEventListener('click', () => {
+            const usuario = inputUsuario.value.trim();
+            const clave = inputClave.value.trim();
 
-        // 4. Enviar mensaje final con Enter
-        inputMensaje.addEventListener('keydown', (evento) => {
-            if (evento.key === 'Enter' && inputMensaje.value.trim() !== '') {
-                const textoFinal = inputMensaje.value;
-                socket.emit('mensaje_final', { texto: textoFinal });
-                agregarMensajeAlChat(textoFinal, true);
-                inputMensaje.value = '';
-                socket.emit('escribiendo', '');
+            if (!usuario || !clave) {
+                errorLogin.innerText = "Por favor, escribe un nombre y la clave.";
+                errorLogin.style.display = "block";
+                return;
             }
-        });
 
-        socket.on('mensaje_final', (datosMensaje) => {
-            agregarMensajeAlChat(datosMensaje.texto, false);
-            burbujaEnVivo.innerText = ""; 
-        });
+            miAlias = usuario;
+            errorLogin.style.display = "none";
+            
+            // Bloqueamos el botón para evitar doble clic accidental
+            btnEntrar.innerText = "Conectando...";
+            btnEntrar.disabled = true; 
 
-        // 5. Cargar y actualizar historial
-        socket.on('cargar_historial', (historial) => {
-            chatBox.innerHTML = ''; 
-            historial.forEach(mensaje => {
-                agregarMensajeAlChat(mensaje.texto, false); 
+            socket = io({
+                auth: { token: clave, alias: miAlias }
+            });
+
+            socket.on("connect_error", (err) => {
+                errorLogin.innerText = "⛔ " + err.message;
+                errorLogin.style.display = "block";
+                btnEntrar.innerText = "Iniciar Sesión";
+                btnEntrar.disabled = false; // Lo desbloqueamos si falla
+                socket.disconnect();
+            });
+
+            socket.on("connect", () => {
+                pantallaLogin.style.display = "none";
+                pantallaChat.style.display = "flex";
+                
+                // Aplicamos el candado de forma estricta
+                if (!chatIniciado) {
+                    iniciarChat();
+                    chatIniciado = true;
+                }
             });
         });
 
-        socket.on('actualizar_historial', (historial) => {
-            chatBox.innerHTML = ''; 
-            historial.forEach(mensaje => {
-                agregarMensajeAlChat(mensaje.texto, false); 
+        // --- 4. LÓGICA DEL CHAT Y EVENTOS ---
+        function iniciarChat() {
+            // Pintar mensajes
+            function agregarMensajeAlChat(texto, emisor) {
+                const divContenedor = document.createElement('div');
+                const esMio = (emisor === miAlias);
+                divContenedor.className = `mensaje ${esMio ? 'mio' : 'otro'}`;
+                const nombreHTML = esMio ? "" : `<strong style="font-size: 0.75rem; color: #1a5c99; display: block; margin-bottom: 3px;">${emisor}</strong>`;
+                divContenedor.innerHTML = `${nombreHTML}${texto}`;
+                chatBox.appendChild(divContenedor);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+
+            // Pintar avisos del sistema (conexiones, zumbidos)
+            function agregarMensajeSistema(texto) {
+                const divContenedor = document.createElement('div');
+                divContenedor.className = 'mensaje-sistema';
+                divContenedor.innerText = texto;
+                chatBox.appendChild(divContenedor);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+
+            // Temblor de pantalla controlado
+            function ejecutarZumbido() {
+                audioZumbido.currentTime = 0; // Reinicia el sonido por si sigue sonando
+                audioZumbido.play().catch(e => console.log("Audio bloqueado:", e));
+                
+                ventanaApp.classList.add('temblando');
+                
+                // Quitamos la clase EXACTAMENTE a los 500ms
+                setTimeout(() => {
+                    ventanaApp.classList.remove('temblando');
+                }, 500);
+            }
+
+            // Enviar mensajes de texto
+            function enviarMensaje() {
+                const textoFinal = inputMensaje.value.trim();
+                if (textoFinal !== '') {
+                    socket.emit('mensaje_final', { texto: textoFinal, emisor: miAlias });
+                    agregarMensajeAlChat(textoFinal, miAlias);
+                    inputMensaje.value = '';
+                    socket.emit('escribiendo', { emisor: miAlias, texto: '' });
+                }
+            }
+
+            // --- LISTENERS LOCALES (Botones) ---
+            btnEnviar.addEventListener('click', enviarMensaje);
+            
+            inputMensaje.addEventListener('keydown', (evento) => {
+                if (evento.key === 'Enter') enviarMensaje();
             });
-        });
+
+            inputMensaje.addEventListener('input', () => {
+                socket.emit('escribiendo', { emisor: miAlias, texto: inputMensaje.value });
+            });
+
+            btnZumbido.addEventListener('click', () => {
+                socket.emit('zumbido', miAlias);
+                agregarMensajeSistema(`Acabas de enviar un zumbido.`);
+                ejecutarZumbido();
+            });
+
+            // --- LISTENERS DEL SERVIDOR (Sockets) ---
+            socket.on('escribiendo', (datos) => {
+                if (datos && datos.texto.length > 0) {
+                    burbujaEnVivo.innerText = `${datos.emisor} teclea: ${datos.texto}`;
+                } else {
+                    burbujaEnVivo.innerText = "";
+                }
+            });
+
+            socket.on('mensaje_final', (datosMensaje) => {
+                agregarMensajeAlChat(datosMensaje.texto, datosMensaje.emisor);
+                burbujaEnVivo.innerText = "";
+                audioMensaje.currentTime = 0; 
+                audioMensaje.play().catch(e => console.log(e));
+            });
+
+            socket.on('cargar_historial', (historial) => {
+                chatBox.innerHTML = ''; 
+                historial.forEach(mensaje => {
+                    agregarMensajeAlChat(mensaje.texto, mensaje.emisor); 
+                });
+            });
+
+            socket.on('zumbido', (quien) => {
+                agregarMensajeSistema(`📳 ¡${quien} te ha enviado un zumbido!`);
+                ejecutarZumbido();
+            });
+
+            socket.on('usuario_desconectado', (quien) => {
+                if (quien) agregarMensajeSistema(`(${quien} is away)`);
+            });
+        }
     </script>
 </body>
 </html>
