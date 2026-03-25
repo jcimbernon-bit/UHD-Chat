@@ -11,7 +11,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 // --- NUEVO: Seguridad del chat ---
-const CLAVE_SECRETA = "gatito-espacial-42"; // Cambia esto por la contraseña que quieras
+const CLAVE_SECRETA = "Kaworu"; // Cambia esto por la contraseña que quieras
 
 // Middleware de Socket.io para verificar la clave ANTES de conectar
 io.use((socket, next) => {
@@ -27,32 +27,40 @@ io.use((socket, next) => {
 
 // --- NUEVO: Aquí guardaremos los mensajes temporalmente ---
 let historialMensajes = [];
-
 io.on('connection', (socket) => {
-    console.log(`🟢 Un usuario se ha conectado. ID: ${socket.id}`);
 
-    // NUEVO: Cuando alguien entra, le enviamos el historial acumulado
+    
+    // 1. Capturamos el nombre que el usuario nos mandará desde el login
+    socket.alias = socket.handshake.auth.alias || "Usuario Desconocido";
+    
+    console.log(`🟢 Se ha conectado: ${socket.alias} (ID: ${socket.id})`);
+
+    // Le enviamos el historial acumulado
     socket.emit('cargar_historial', historialMensajes);
 
-    // Reenviar lo que se está escribiendo (como ya teníamos)
-    socket.on('escribiendo', (texto) => {
-        socket.broadcast.emit('escribiendo', texto); 
-    });
-
-    // NUEVO: Recibir un mensaje definitivo (al pulsar Enter)
+    // Recibir un mensaje definitivo
     socket.on('mensaje_final', (datosMensaje) => {
-        // Añadimos la fecha/hora actual al mensaje para el futuro borrado de 24h
         datosMensaje.timestamp = Date.now();
-        
-        // Lo guardamos en nuestra lista del servidor
         historialMensajes.push(datosMensaje);
-
-        // Se lo enviamos al OTRO usuario
         socket.broadcast.emit('mensaje_final', datosMensaje);
     });
 
+    // Escritura en vivo (lo dejamos igual)
+    socket.on('escribiendo', (datos) => {
+        socket.broadcast.emit('escribiendo', datos);
+    });
+
+    // --- NUEVO: Recibir y reenviar el Zumbido ---
+    socket.on('zumbido', (quienLoEnvia) => {
+        // Se lo enviamos a todos los DEMÁS conectados
+        socket.broadcast.emit('zumbido', quienLoEnvia);
+    });
+
+    // --- NUEVO: Aviso de desconexión ---
     socket.on('disconnect', () => {
-        console.log(`🔴 Un usuario se ha desconectado. ID: ${socket.id}`);
+        console.log(`🔴 Se ha desconectado: ${socket.alias}`);
+        // Le avisamos a todos los que siguen en el chat
+        io.emit('usuario_desconectado', socket.alias);
     });
 });
 
